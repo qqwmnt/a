@@ -1,0 +1,1004 @@
+local Players = game:GetService('Players')
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local UIS = game:GetService('UserInputService')
+local TweenService = game:GetService('TweenService')
+local HttpService = game:GetService('HttpService')
+local RunService = game:GetService('RunService')
+local LocalPlayer = Players.LocalPlayer
+
+local WindUI = loadstring(game:HttpGet('https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua'))()
+local Window = WindUI:CreateWindow({
+    Title = 'solvexis hub',
+    Icon = 'ghost',
+    Author = 'by solvexis',
+    Folder = 'solvexis hub',
+    Size = UDim2.fromOffset(500, 350),
+    Transparent = false,
+    Theme = 'Violet',
+    Acrylic = true,
+    HideSearchBar = false,
+    SideBarWidth = 200,
+    OpenButton = {
+        Enabled = true,
+        Title = 'solvexis',
+        Draggable = true,
+        CornerRadius = UDim.new(0, 8),
+        StrokeThickness = 1,
+        OnlyMobile = false,
+        Scale = 1,
+        Color = ColorSequence.new(Color3.fromRGB(0, 0, 0), Color3.fromRGB(0, 0, 0)),
+    },
+})
+
+-- Вкладки
+local MiscTab = Window:Tab({
+    Title = 'Misc',
+    Icon = 'wrench',
+})
+local ESPTab = Window:Tab({
+    Title = 'ESP',
+    Icon = 'eye',
+})
+
+local gui = Instance.new('ScreenGui')
+gui.Name = 'BombJumpUI'
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer.PlayerGui
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local globalMoveLocked = true
+
+----------------------------------------------------
+-- СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИЙ
+----------------------------------------------------
+local function SaveButtonPosition(pos, name)
+    pcall(function()
+        if writefile then
+            local folder = 'NexiumHub'
+            if not isfolder(folder) then
+                makefolder(folder)
+            end
+            writefile(folder .. '/' .. name .. 'Pos.json', HttpService:JSONEncode({
+                X = { Scale = pos.X.Scale, Offset = pos.X.Offset },
+                Y = { Scale = pos.Y.Scale, Offset = pos.Y.Offset },
+            }))
+        end
+    end)
+end
+
+local function LoadButtonPosition(name)
+    local success, result = pcall(function()
+        if readfile and isfile and isfile('NexiumHub/' .. name .. 'Pos.json') then
+            return HttpService:JSONDecode(readfile('NexiumHub/' .. name .. 'Pos.json'))
+        end
+    end)
+    if success and result then
+        return UDim2.new(result.X.Scale, result.X.Offset, result.Y.Scale, result.Y.Offset)
+    end
+    return nil
+end
+
+----------------------------------------------------
+-- ГЛОБАЛЬНЫЙ ПЕРЕКЛЮЧАТЕЛЬ БЛОКИРОВКИ КНОПОК
+----------------------------------------------------
+MiscTab:Toggle({
+    Title = 'Lock Buttons Position',
+    Default = true,
+    Callback = function(state)
+        globalMoveLocked = state
+    end,
+})
+
+MiscTab:Divider()
+
+----------------------------------------------------
+-- СИСТЕМА КНОПОК BOMB JUMP
+----------------------------------------------------
+local function CreateJumpSystem(config)
+    local size = config.Size or 70
+    local visible = false
+    local cooldown = false
+    local cooldownTime = config.Cooldown
+    local buttonDefaultText = config.ButtonText or 'Bomb'
+    local saveName = config.BombName
+    local currentKeybind = config.Keybind or nil
+    local defaultPos = config.Position or UDim2.new(0.5, -(size / 2), 0.5, -(size / 2))
+    local buttonPos = LoadButtonPosition(saveName) or defaultPos
+
+    local activeThemeColor = config.DefaultColor or Color3.fromRGB(140, 80, 255)
+
+    local button = Instance.new('TextButton')
+    button.Name = saveName .. 'Button'
+    button.Parent = gui
+    button.Size = UDim2.new(0, size, 0, size)
+    button.Position = buttonPos
+    button.Text = ""
+    button.BackgroundColor3 = Color3.fromRGB(15, 12, 28)
+    button.BackgroundTransparency = 0.45
+    button.Active = true
+    button.AutoButtonColor = false
+    button.Visible = visible
+    button.ZIndex = 100
+
+    local corner = Instance.new('UICorner')
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = button
+
+    local mainGradient = Instance.new('UIGradient')
+    mainGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 20, 45)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 8, 20)),
+    })
+    mainGradient.Transparency = NumberSequence.new(0.2)
+    mainGradient.Rotation = 45
+    mainGradient.Parent = button
+
+    local label = Instance.new('TextLabel')
+    label.Name = "ButtonLabel"
+    label.Parent = button
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Position = UDim2.new(0, 0, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamMedium
+    label.Text = buttonDefaultText
+    label.TextScaled = false
+    label.TextSize = 13
+    label.TextWrapped = true
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextStrokeTransparency = 0.7
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.ZIndex = 102
+
+    local stroke = Instance.new('UIStroke')
+    stroke.Thickness = 1.5
+    stroke.Color = activeThemeColor
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.LineJoinMode = Enum.LineJoinMode.Round
+    stroke.Parent = button
+
+    local function UpdateButtonColor(newColor)
+        activeThemeColor = newColor
+        stroke.Color = newColor
+    end
+
+    local function UpdateSize(newSize)
+        size = newSize
+        button.Size = UDim2.new(0, size, 0, size)
+    end
+
+    local function PlayClickAnimation()
+        local currentSize = button.Size.X.Offset
+        local tweenDown = TweenService:Create(button, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, currentSize * 0.92, 0, currentSize * 0.92),
+        })
+        local tweenUp = TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, currentSize, 0, currentSize),
+        })
+
+        tweenDown:Play()
+        tweenDown.Completed:Connect(function()
+            tweenUp:Play()
+        end)
+    end
+
+    local function EnsureBombInBackpack()
+        local character = LocalPlayer.Character
+        local backpack = LocalPlayer:FindFirstChild('Backpack')
+        if not character or not backpack then return nil end
+
+        local bomb = character:FindFirstChild(config.BombName) or backpack:FindFirstChild(config.BombName)
+        if not bomb then
+            pcall(function()
+                ReplicatedStorage.Remotes.Extras.ReplicateToy:InvokeServer(config.BombName)
+            end)
+            task.wait(0.15)
+            bomb = character:FindFirstChild(config.BombName) or backpack:FindFirstChild(config.BombName)
+        end
+        return bomb
+    end
+
+    task.spawn(function()
+        while true do
+            task.wait(0.8)
+            if visible then
+                EnsureBombInBackpack()
+            end
+        end
+    end)
+
+    LocalPlayer.CharacterAdded:Connect(function()
+        cooldown = false
+        task.wait()
+        if not cooldown then
+            label.Text = buttonDefaultText
+            label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        end
+        if visible then
+            task.wait(0.5)
+            EnsureBombInBackpack()
+        end
+    end)
+
+    local dragging = false
+    local dragStart
+    local startPos
+
+    button.InputBegan:Connect(function(input)
+        if globalMoveLocked then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = button.Position
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging and not globalMoveLocked then
+                SaveButtonPosition(button.Position, saveName)
+            end
+            dragging = false
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if globalMoveLocked then return end
+        if dragging then
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+                button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end
+    end)
+
+    local function GetBomb()
+        local character = LocalPlayer.Character
+        local backpack = LocalPlayer:FindFirstChild('Backpack')
+        if not character then return nil end
+
+        local bomb = character:FindFirstChild(config.BombName)
+        if bomb then return bomb end
+
+        if backpack then
+            bomb = backpack:FindFirstChild(config.BombName)
+            if bomb then
+                bomb.Parent = character
+                return bomb
+            end
+        end
+
+        bomb = EnsureBombInBackpack()
+        if bomb and backpack and bomb.Parent == backpack then
+            bomb.Parent = character
+        end
+        return bomb
+    end
+
+    local function DoJump()
+        if cooldown then return end
+        local character = LocalPlayer.Character
+        if not character then return end
+
+        local hrp = character:FindFirstChild('HumanoidRootPart')
+        local humanoid = character:FindFirstChild('Humanoid')
+        if not hrp or not humanoid then return end
+
+        local bomb = GetBomb()
+        if not bomb then return end
+
+        local remote = bomb:FindFirstChild('Remote')
+        if not remote then return end
+
+        local camera = workspace.CurrentCamera
+        local lookVector = camera.CFrame.LookVector
+        local position = hrp.Position + (lookVector * 5) + Vector3.new(0, 2, 0)
+
+        pcall(function()
+            remote:FireServer(CFrame.new(position), 50)
+        end)
+
+        task.delay(0.05, function()
+            if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, math.max(hrp.AssemblyLinearVelocity.Y, 50), hrp.AssemblyLinearVelocity.Z)
+            end
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end)
+
+        cooldown = true
+
+        task.spawn(function()
+            for i = cooldownTime, 1, -1 do
+                if not cooldown then break end
+                label.Text = tostring(i)
+                task.wait(1)
+            end
+
+            label.Text = buttonDefaultText
+            cooldown = false
+        end)
+
+        task.delay(0.4, function()
+            if bomb and bomb.Parent == character then
+                bomb.Parent = LocalPlayer.Backpack
+            end
+        end)
+    end
+
+    button.MouseButton1Click:Connect(function()
+        if not globalMoveLocked then return end
+        PlayClickAnimation()
+        DoJump()
+    end)
+
+    UIS.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or not globalMoveLocked or not currentKeybind then return end
+        if input.KeyCode == currentKeybind then
+            PlayClickAnimation()
+            DoJump()
+        end
+    end)
+
+    config.Tab:Toggle({
+        Title = config.SectionTitle .. ' Show Button',
+        Default = false,
+        Callback = function(state)
+            visible = state
+            button.Visible = visible
+            if visible then
+                EnsureBombInBackpack()
+            end
+        end,
+    })
+
+    config.Tab:Colorpicker({
+        Title = config.SectionTitle .. ' Color',
+        Default = activeThemeColor,
+        Callback = function(color)
+            UpdateButtonColor(color)
+        end,
+    })
+
+    config.Tab:Slider({
+        Title = config.SectionTitle .. ' Size',
+        Value = { Min = 30, Max = 200, Default = size },
+        Callback = function(v)
+            UpdateSize(v)
+        end,
+    })
+
+    config.Tab:Keybind({
+        Title = config.SectionTitle .. ' Keybind',
+        Default = currentKeybind,
+        Callback = function(key)
+            currentKeybind = key
+        end,
+    })
+
+    config.Tab:Divider()
+end
+
+CreateJumpSystem({
+    Tab = MiscTab,
+    BombName = 'FakeBomb',
+    ButtonText = 'Prank',
+    SectionTitle = 'Prank Bomb',
+    Cooldown = 22,
+    Size = 75,
+    Keybind = Enum.KeyCode.Q,
+    DefaultColor = Color3.fromRGB(140, 80, 255),
+})
+
+CreateJumpSystem({
+    Tab = MiscTab,
+    BombName = 'GoldBomb',
+    ButtonText = 'Gold',
+    SectionTitle = 'Gold Jump',
+    Cooldown = 4,
+    Size = 75,
+    Keybind = Enum.KeyCode.G,
+    DefaultColor = Color3.fromRGB(240, 180, 50),
+})
+
+----------------------------------------------------
+-- МОДУЛЬ SHOOT / THROW
+----------------------------------------------------
+local function CreateShootThrowSystem()
+    local size = 75
+    local visible = false
+    local buttonDefaultText = 'Shoot/Throw'
+    local saveName = 'ShootThrowButton'
+    local currentKeybind = Enum.KeyCode.E
+    local defaultPos = UDim2.new(0.5, -37.5, 0.75, -37.5)
+    local buttonPos = LoadButtonPosition(saveName) or defaultPos
+    local activeThemeColor = Color3.fromRGB(255, 80, 80)
+
+    local PredictionPart = Instance.new("Part")
+    PredictionPart.Name = "RuzPredictionPart"
+    PredictionPart.Size = Vector3.new(0.5, 0.5, 0.5)
+    PredictionPart.Anchored = true
+    PredictionPart.CanCollide = false
+    PredictionPart.Transparency = 1
+    PredictionPart.Parent = workspace
+
+    local currentTarget = nil
+
+    local button = Instance.new('TextButton')
+    button.Name = saveName
+    button.Parent = gui
+    button.Size = UDim2.new(0, size, 0, size)
+    button.Position = buttonPos
+    button.Text = ""
+    button.BackgroundColor3 = Color3.fromRGB(15, 12, 28)
+    button.BackgroundTransparency = 0.45
+    button.Active = true
+    button.AutoButtonColor = false
+    button.Visible = visible
+    button.ZIndex = 100
+
+    local corner = Instance.new('UICorner')
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = button
+
+    local mainGradient = Instance.new('UIGradient')
+    mainGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 20, 20)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 10, 10)),
+    })
+    mainGradient.Transparency = NumberSequence.new(0.2)
+    mainGradient.Rotation = 45
+    mainGradient.Parent = button
+
+    local label = Instance.new('TextLabel')
+    label.Name = "ButtonLabel"
+    label.Parent = button
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Position = UDim2.new(0, 0, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamMedium
+    label.Text = buttonDefaultText
+    label.TextScaled = false
+    label.TextSize = 11
+    label.TextWrapped = true
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextStrokeTransparency = 0.7
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.ZIndex = 102
+
+    local stroke = Instance.new('UIStroke')
+    stroke.Thickness = 1.5
+    stroke.Color = activeThemeColor
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.LineJoinMode = Enum.LineJoinMode.Round
+    stroke.Parent = button
+
+    local function UpdateButtonColor(newColor)
+        activeThemeColor = newColor
+        stroke.Color = newColor
+    end
+
+    local function UpdateSize(newSize)
+        size = newSize
+        button.Size = UDim2.new(0, size, 0, size)
+    end
+
+    local function PlayClickAnimation()
+        local currentSize = button.Size.X.Offset
+        local tweenDown = TweenService:Create(button, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, currentSize * 0.92, 0, currentSize * 0.92),
+        })
+        local tweenUp = TweenService:Create(button, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, currentSize, 0, currentSize),
+        })
+
+        tweenDown:Play()
+        tweenDown.Completed:Connect(function()
+            tweenUp:Play()
+        end)
+    end
+
+    local function getBestTarget()
+        local character = LocalPlayer.Character
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+
+        local hasKnife = LocalPlayer.Backpack:FindFirstChild("Knife") or (character and character:FindFirstChild("Knife"))
+        local hasGun = LocalPlayer.Backpack:FindFirstChild("Gun") or (character and character:FindFirstChild("Gun"))
+        
+        local bestTarget = nil
+        local shortestDist = math.huge
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local char2 = player.Character
+                local hum = char2:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local hrp2 = char2:FindFirstChild("HumanoidRootPart")
+                    if hrp2 then
+                        local pKnife = player.Backpack:FindFirstChild("Knife") or char2:FindFirstChild("Knife")
+                        local pGun = player.Backpack:FindFirstChild("Gun") or char2:FindFirstChild("Gun")
+                        local dist = (hrp2.Position - hrp.Position).Magnitude
+                        local isValid = false
+
+                        if not hasKnife then
+                            if not hasGun then
+                                if pKnife then isValid = true; dist = dist - 1000 end
+                                if pGun then isValid = true end
+                            elseif pGun or pKnife then
+                                isValid = true
+                            end
+                        elseif pKnife then
+                            isValid = true
+                        end
+
+                        if isValid and dist < shortestDist then
+                            shortestDist = dist
+                            bestTarget = char2
+                        end
+                    end
+                end
+            end
+        end
+
+        if not bestTarget then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    local char3 = player.Character
+                    local hum = char3:FindFirstChildOfClass("Humanoid")
+                    local hrp3 = char3:FindFirstChild("HumanoidRootPart")
+                    if hum and hum.Health > 0 and hrp3 then
+                        local dist = (hrp3.Position - hrp.Position).Magnitude
+                        if dist < shortestDist then
+                            shortestDist = dist
+                            bestTarget = char3
+                        end
+                    end
+                end
+            end
+        end
+
+        return bestTarget
+    end
+
+    RunService.RenderStepped:Connect(function()
+        local target = getBestTarget()
+        currentTarget = target
+
+        if target then
+            local character = LocalPlayer.Character
+            local hrp = character and character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local torso = target:FindFirstChild("UpperTorso") or target:FindFirstChild("Torso") or target:FindFirstChild("HumanoidRootPart")
+                local hum = target:FindFirstChildOfClass("Humanoid")
+
+                if torso then
+                    local pos = torso.Position
+                    local distFactor = (pos - hrp.Position).Magnitude / 250
+                    local velocity = torso.AssemblyLinearVelocity
+                    if hum then
+                        local state = hum:GetState()
+                        if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then
+                            velocity = Vector3.new(velocity.X, velocity.Y * 0.35, velocity.Z)
+                        end
+                    end
+                    PredictionPart.CFrame = CFrame.new(pos + velocity * distFactor)
+                end
+            end
+        end
+    end)
+
+    local function shootGun()
+        local character = LocalPlayer.Character
+        if not character then return end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local gun = LocalPlayer.Backpack:FindFirstChild("Gun") or character:FindFirstChild("Gun")
+        if gun then
+            if currentTarget then
+                if character ~= gun.Parent then
+                    character.Humanoid:EquipTool(gun)
+                    task.wait(0)
+                end
+
+                local targetPos = PredictionPart.CFrame.Position
+                local shootOrigin = hrp.Position + Vector3.new(0, 1, 0)
+                local finalCFrame = CFrame.new(shootOrigin, targetPos)
+
+                pcall(function()
+                    local shootRemote = gun:WaitForChild("Shoot")
+                    local args = {CFrame.new(targetPos)}
+                    shootRemote:FireServer(finalCFrame, unpack(args, 1, #args))
+                end)
+                return
+            end
+        end
+    end
+
+    local function throwKnife()
+        local character = LocalPlayer.Character
+        if not character then return end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local knife = LocalPlayer.Backpack:FindFirstChild("Knife") or character:FindFirstChild("Knife")
+        if knife then
+            if character ~= knife.Parent then
+                character.Humanoid:EquipTool(knife)
+                task.wait(0)
+            end
+
+            local target = currentTarget
+            if target then
+                local hrpTarget = target:FindFirstChild("HumanoidRootPart")
+                if hrpTarget then
+                    local torso2 = target:FindFirstChild("UpperTorso") or target:FindFirstChild("Torso") or hrpTarget
+                    local vel2 = hrpTarget.AssemblyLinearVelocity
+                    local dist2 = (torso2.Position - hrp.Position).Magnitude
+                    local predictedPos = torso2.Position + Vector3.new(vel2.X, 0, vel2.Z) * (dist2 / 65)
+
+                    pcall(function()
+                        local knifeThrown = knife:WaitForChild("Events"):WaitForChild("KnifeThrown")
+                        local cFrame = CFrame.new(hrp.Position, predictedPos)
+                        local args = {CFrame.new(predictedPos)}
+                        knifeThrown:FireServer(cFrame, unpack(args, 1, #args))
+                    end)
+                    return
+                end
+            end
+        end
+    end
+
+    local function PerformShootOrThrow()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hasKnifeBackpack = LocalPlayer.Backpack:FindFirstChild("Knife")
+        local hasKnifeChar = char:FindFirstChild("Knife")
+
+        if not hasKnifeBackpack and not hasKnifeChar then
+            shootGun()
+            return
+        end
+        throwKnife()
+    end
+
+    button.MouseButton1Click:Connect(function()
+        if not globalMoveLocked then return end
+        PlayClickAnimation()
+        PerformShootOrThrow()
+    end)
+
+    UIS.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or not globalMoveLocked or not currentKeybind then return end
+        if input.KeyCode == currentKeybind then
+            PlayClickAnimation()
+            PerformShootOrThrow()
+        end
+    end)
+
+    local dragging = false
+    local dragStart
+    local startPos
+
+    button.InputBegan:Connect(function(input)
+        if globalMoveLocked then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = button.Position
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging and not globalMoveLocked then
+                SaveButtonPosition(button.Position, saveName)
+            end
+            dragging = false
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if globalMoveLocked then return end
+        if dragging then
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+                button.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end
+    end)
+
+    MiscTab:Toggle({
+        Title = 'Shoot/Throw Show Button',
+        Default = false,
+        Callback = function(state)
+            visible = state
+            button.Visible = visible
+        end,
+    })
+
+    MiscTab:Colorpicker({
+        Title = 'Shoot/Throw Color',
+        Default = activeThemeColor,
+        Callback = function(color)
+            UpdateButtonColor(color)
+        end,
+    })
+
+    MiscTab:Slider({
+        Title = 'Shoot/Throw Size',
+        Value = { Min = 30, Max = 200, Default = size },
+        Callback = function(v)
+            UpdateSize(v)
+        end,
+    })
+
+    MiscTab:Keybind({
+        Title = 'Shoot/Throw Keybind',
+        Default = currentKeybind,
+        Callback = function(key)
+            currentKeybind = key
+        end,
+    })
+end
+
+CreateShootThrowSystem()
+
+----------------------------------------------------
+-- НОВАЯ ВКЛАДКА ESP (Мульти-секции, 3 функции на роль + Gun Drop в Innocent)
+--------------------------------1--------------------
+local ESPSection = ESPTab:MultiSection({
+    Title = "ESP Management",
+    Subtitle = "Configure player and item visuals",
+    TextXAlignment = "Center",
+    Icon = "eye",
+    Sections = {
+        {"Murderer", "skull"},
+        {"Sheriff", "shield"},
+        {"Innocent", "user"}
+    },
+})
+
+-- Логика конфигурации ESP
+local ESP_Config = {
+    Murd = { Enabled = false, Names = false, Chams = false },
+    Sheriff = { Enabled = false, Names = false, Chams = false },
+    Innocent = { Enabled = false, Names = false, Chams = false, GunDrop = false },
+    MurdererColor = Color3.fromRGB(255, 0, 0),
+    SheriffColor = Color3.fromRGB(0, 0, 255),
+    InnocentColor = Color3.fromRGB(0, 255, 0),
+    GunDropColor = Color3.fromRGB(0, 255, 255)
+}
+
+-- Отсек Murderer (Первые 3 функции)
+ESPSection.Murderer:Toggle({
+    Title = "Murderer ESP",
+    Desc = "Highlight murderer",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Murd.Enabled = state
+    end
+})
+ESPSection.Murderer:Toggle({
+    Title = "Murderer Name",
+    Desc = "Show murderer name",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Murd.Names = state
+    end
+})
+ESPSection.Murderer:Toggle({
+    Title = "Murderer Chams",
+    Desc = "Show chams on murderer",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Murd.Chams = state
+    end
+})
+
+-- Отсек Sheriff (Первые 3 функции)
+ESPSection.Sheriff:Toggle({
+    Title = "Sheriff ESP",
+    Desc = "Highlight sheriff",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Sheriff.Enabled = state
+    end
+})
+ESPSection.Sheriff:Toggle({
+    Title = "Sheriff Name",
+    Desc = "Show sheriff name",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Sheriff.Names = state
+    end
+})
+ESPSection.Sheriff:Toggle({
+    Title = "Sheriff Chams",
+    Desc = "Show chams on sheriff",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Sheriff.Chams = state
+    end
+})
+
+-- Отсек Innocent (Первые 3 функции + Gun Drop ESP = 4 функции)
+ESPSection.Innocent:Toggle({
+    Title = "Innocent ESP",
+    Desc = "Highlight innocents",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Innocent.Enabled = state
+    end
+})
+ESPSection.Innocent:Toggle({
+    Title = "Innocent Name",
+    Desc = "Show innocent names",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Innocent.Names = state
+    end
+})
+ESPSection.Innocent:Toggle({
+    Title = "Innocent Chams",
+    Desc = "Show chams on innocents",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Innocent.Chams = state
+    end
+})
+ESPSection.Innocent:Toggle({
+    Title = "Gun Drop ESP",
+    Desc = "Highlight and label when a gun is dropped on the map",
+    Default = false,
+    Callback = function(state)
+        ESP_Config.Innocent.GunDrop = state
+    end
+})
+
+-- Отрисовка ESP
+local espGui = Instance.new("Folder")
+espGui.Name = "VisionESP"
+espGui.Parent = game:GetService("CoreGui")
+
+local espObjects = {}
+
+local function ClearESP(player)
+    if espObjects[player] then
+        for _, obj in pairs(espObjects[player]) do
+            if obj then pcall(function() obj:Destroy() end) end
+        end
+        espObjects[player] = nil
+    end
+end
+
+local function GetPlayerRole(player)
+    if not player or not player.Character then return "Innocent" end
+    local backpack = player:FindFirstChild("Backpack")
+    local character = player.Character
+
+    local hasKnife = (backpack and backpack:FindFirstChild("Knife")) or character:FindFirstChild("Knife")
+    local hasGun = (backpack and backpack:FindFirstChild("Gun")) or character:FindFirstChild("Gun")
+
+    if hasKnife then return "Murderer"
+    elseif hasGun then return "Sheriff" end
+    return "Innocent"
+end
+
+local function CreateESPForPlayer(player)
+    if player == LocalPlayer then return end
+    ClearESP(player)
+
+    local folder = Instance.new("Folder")
+    folder.Name = player.Name
+    folder.Parent = espGui
+
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "Highlight"
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.Parent = folder
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "NameGui"
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0, 200, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.Parent = folder
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 13
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextStrokeTransparency = 0.5
+    nameLabel.Parent = billboard
+
+    espObjects[player] = { Folder = folder, Highlight = highlight, Billboard = billboard, Label = nameLabel }
+end
+
+local gunDropHighlight = nil
+local gunDropBillboard = nil
+
+local function UpdateGunDropESP()
+    local gunDrop = workspace:FindFirstChild("GunDrop", true)
+    if ESP_Config.Innocent.GunDrop and gunDrop then
+        if not gunDropHighlight then
+            gunDropHighlight = Instance.new("Highlight")
+            gunDropHighlight.Name = "GunDropHighlight"
+            gunDropHighlight.FillColor = ESP_Config.GunDropColor
+            gunDropHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            gunDropHighlight.FillTransparency = 0.3
+            gunDropHighlight.Parent = espGui
+
+            gunDropBillboard = Instance.new("BillboardGui")
+            gunDropBillboard.AlwaysOnTop = true
+            gunDropBillboard.Size = UDim2.new(0, 150, 0, 40)
+            gunDropBillboard.StudsOffset = Vector3.new(0, 2, 0)
+            gunDropBillboard.Parent = espGui
+
+            local lbl = Instance.new("TextLabel")
+            lbl.Size = UDim2.new(1, 0, 1, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.Font = Enum.Font.GothamBold
+            lbl.TextSize = 14
+            lbl.TextColor3 = ESP_Config.GunDropColor
+            lbl.Text = "Gun Drop"
+            lbl.TextStrokeTransparency = 0.5
+            lbl.Parent = gunDropBillboard
+        end
+        gunDropHighlight.Adornee = gunDrop
+        gunDropBillboard.Adornee = gunDrop
+        gunDropHighlight.Enabled = true
+        gunDropBillboard.Enabled = true
+    else
+        if gunDropHighlight then gunDropHighlight.Enabled = false end
+        if gunDropBillboard then gunDropBillboard.Enabled = false end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    UpdateGunDropESP()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local data = espObjects[player]
+            if not data then
+                CreateESPForPlayer(player)
+                data = espObjects[player]
+            end
+
+            if data and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local char = player.Character
+                local hrp = char.HumanoidRootPart
+                local role = GetPlayerRole(player)
+                
+                local cfg = role == "Murderer" and ESP_Config.Murd or (role == "Sheriff" and ESP_Config.Sheriff or ESP_Config.Innocent)
+                local color = role == "Murderer" and ESP_Config.MurdererColor or (role == "Sheriff" and ESP_Config.SheriffColor or ESP_Config.InnocentColor)
+
+                if cfg.Enabled or cfg.Chams then
+                    data.Highlight.Adornee = char
+                    data.Highlight.FillColor = color
+                    data.Highlight.OutlineColor = color
+                    data.Highlight.Enabled = true
+                else
+                    data.Highlight.Enabled = false
+                end
+
+                if cfg.Names then
+                    data.Billboard.Adornee = hrp
+                    data.Label.Text = player.DisplayName .. " [" .. role .. "]"
+                    data.Label.TextColor3 = color
+                    data.Billboard.Enabled = true
+                else
+                    data.Billboard.Enabled = false
+                end
+            elseif data then
+                data.Highlight.Enabled = false
+                data.Billboard.Enabled = false
+            end
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(ClearESP)
