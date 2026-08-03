@@ -744,8 +744,8 @@ end
 CreateShootThrowSystem()
 
 ----------------------------------------------------
--- НОВАЯ ВКЛАДКА ESP (Мульти-секции, 3 функции на роль + Gun Drop в Innocent)
---------------------------------1--------------------
+-- НОВАЯ ТОЧНАЯ ESP ВКЛАДКА (ЧЕРЕЗ MULTISECTION)
+----------------------------------------------------
 local ESPSection = ESPTab:MultiSection({
     Title = "ESP Management",
     Subtitle = "Configure player and item visuals",
@@ -758,7 +758,6 @@ local ESPSection = ESPTab:MultiSection({
     },
 })
 
--- Логика конфигурации ESP
 local ESP_Config = {
     Murd = { Enabled = false, Names = false, Chams = false },
     Sheriff = { Enabled = false, Names = false, Chams = false },
@@ -769,93 +768,73 @@ local ESP_Config = {
     GunDropColor = Color3.fromRGB(0, 255, 255)
 }
 
--- Отсек Murderer (Первые 3 функции)
+-- Отсек Murderer (первые 3 функции)
 ESPSection.Murderer:Toggle({
     Title = "Murderer ESP",
     Desc = "Highlight murderer",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Murd.Enabled = state
-    end
+    Callback = function(state) ESP_Config.Murd.Enabled = state end
 })
 ESPSection.Murderer:Toggle({
     Title = "Murderer Name",
     Desc = "Show murderer name",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Murd.Names = state
-    end
+    Callback = function(state) ESP_Config.Murd.Names = state end
 })
 ESPSection.Murderer:Toggle({
     Title = "Murderer Chams",
     Desc = "Show chams on murderer",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Murd.Chams = state
-    end
+    Callback = function(state) ESP_Config.Murd.Chams = state end
 })
 
--- Отсек Sheriff (Первые 3 функции)
+-- Отсек Sheriff (первые 3 функции)
 ESPSection.Sheriff:Toggle({
     Title = "Sheriff ESP",
     Desc = "Highlight sheriff",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Sheriff.Enabled = state
-    end
+    Callback = function(state) ESP_Config.Sheriff.Enabled = state end
 })
 ESPSection.Sheriff:Toggle({
     Title = "Sheriff Name",
     Desc = "Show sheriff name",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Sheriff.Names = state
-    end
+    Callback = function(state) ESP_Config.Sheriff.Names = state end
 })
 ESPSection.Sheriff:Toggle({
     Title = "Sheriff Chams",
     Desc = "Show chams on sheriff",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Sheriff.Chams = state
-    end
+    Callback = function(state) ESP_Config.Sheriff.Chams = state end
 })
 
--- Отсек Innocent (Первые 3 функции + Gun Drop ESP = 4 функции)
+-- Отсек Innocent (первые 3 функции + Gun Drop ESP)
 ESPSection.Innocent:Toggle({
     Title = "Innocent ESP",
     Desc = "Highlight innocents",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Innocent.Enabled = state
-    end
+    Callback = function(state) ESP_Config.Innocent.Enabled = state end
 })
 ESPSection.Innocent:Toggle({
     Title = "Innocent Name",
     Desc = "Show innocent names",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Innocent.Names = state
-    end
+    Callback = function(state) ESP_Config.Innocent.Names = state end
 })
 ESPSection.Innocent:Toggle({
     Title = "Innocent Chams",
     Desc = "Show chams on innocents",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Innocent.Chams = state
-    end
+    Callback = function(state) ESP_Config.Innocent.Chams = state end
 })
 ESPSection.Innocent:Toggle({
     Title = "Gun Drop ESP",
     Desc = "Highlight and label when a gun is dropped on the map",
     Default = false,
-    Callback = function(state)
-        ESP_Config.Innocent.GunDrop = state
-    end
+    Callback = function(state) ESP_Config.Innocent.GunDrop = state end
 })
 
--- Отрисовка ESP
+-- Логика отрисовки ESP
 local espGui = Instance.new("Folder")
 espGui.Name = "VisionESP"
 espGui.Parent = game:GetService("CoreGui")
