@@ -744,100 +744,48 @@ end
 CreateShootThrowSystem()
 
 ----------------------------------------------------
--- НОВАЯ ТОЧНАЯ ESP ВКЛАДКА (ЧЕРЕЗ MULTISECTION)
+-- МОДУЛЬ ESP (ПЕРЕРАБОТАННЫЙ ПО ТРЕБОВАНИЯМ)
 ----------------------------------------------------
-local ESPSection = ESPTab:MultiSection({
-    Title = "ESP Management",
-    Subtitle = "Configure player and item visuals",
-    TextXAlignment = "Center",
-    Icon = "eye",
-    Sections = {
-        {"Murderer", "skull"},
-        {"Sheriff", "shield"},
-        {"Innocent", "user"}
-    },
-})
-
 local ESP_Config = {
-    Murd = { Enabled = false, Names = false, Chams = false },
-    Sheriff = { Enabled = false, Names = false, Chams = false },
-    Innocent = { Enabled = false, Names = false, Chams = false, GunDrop = false },
-    MurdererColor = Color3.fromRGB(255, 0, 0),
-    SheriffColor = Color3.fromRGB(0, 0, 255),
+    -- Innocent
+    InnocentEnabled = false,
+    InnocentInfo = false,
     InnocentColor = Color3.fromRGB(0, 255, 0),
+
+    -- Sheriff
+    SheriffEnabled = false,
+    SheriffInfo = false,
+    SheriffColor = Color3.fromRGB(0, 0, 255),
+
+    -- Murder
+    MurderEnabled = false,
+    MurderInfo = false,
+    MurderColor = Color3.fromRGB(255, 0, 0),
+
+    -- Gun Drop (сохраняем полезную функцию из оригинала)
+    GunDrop = false,
     GunDropColor = Color3.fromRGB(0, 255, 255)
 }
 
--- Отсек Murderer (первые 3 функции)
-ESPSection.Murderer:Toggle({
-    Title = "Murderer ESP",
-    Desc = "Highlight murderer",
-    Default = false,
-    Callback = function(state) ESP_Config.Murd.Enabled = state end
-})
-ESPSection.Murderer:Toggle({
-    Title = "Murderer Name",
-    Desc = "Show murderer name",
-    Default = false,
-    Callback = function(state) ESP_Config.Murd.Names = state end
-})
-ESPSection.Murderer:Toggle({
-    Title = "Murderer Chams",
-    Desc = "Show chams on murderer",
-    Default = false,
-    Callback = function(state) ESP_Config.Murd.Chams = state end
-})
-
--- Отсек Sheriff (первые 3 функции)
-ESPSection.Sheriff:Toggle({
-    Title = "Sheriff ESP",
-    Desc = "Highlight sheriff",
-    Default = false,
-    Callback = function(state) ESP_Config.Sheriff.Enabled = state end
-})
-ESPSection.Sheriff:Toggle({
-    Title = "Sheriff Name",
-    Desc = "Show sheriff name",
-    Default = false,
-    Callback = function(state) ESP_Config.Sheriff.Names = state end
-})
-ESPSection.Sheriff:Toggle({
-    Title = "Sheriff Chams",
-    Desc = "Show chams on sheriff",
-    Default = false,
-    Callback = function(state) ESP_Config.Sheriff.Chams = state end
-})
-
--- Отсек Innocent (первые 3 функции + Gun Drop ESP)
-ESPSection.Innocent:Toggle({
-    Title = "Innocent ESP",
-    Desc = "Highlight innocents",
-    Default = false,
-    Callback = function(state) ESP_Config.Innocent.Enabled = state end
-})
-ESPSection.Innocent:Toggle({
-    Title = "Innocent Name",
-    Desc = "Show innocent names",
-    Default = false,
-    Callback = function(state) ESP_Config.Innocent.Names = state end
-})
-ESPSection.Innocent:Toggle({
-    Title = "Innocent Chams",
-    Desc = "Show chams on innocents",
-    Default = false,
-    Callback = function(state) ESP_Config.Innocent.Chams = state end
-})
-ESPSection.Innocent:Toggle({
-    Title = "Gun Drop ESP",
-    Desc = "Highlight and label when a gun is dropped on the map",
-    Default = false,
-    Callback = function(state) ESP_Config.Innocent.GunDrop = state end
-})
-
--- Логика отрисовки ESP
 local espGui = Instance.new("Folder")
 espGui.Name = "VisionESP"
 espGui.Parent = game:GetService("CoreGui")
+
+local function GetPlayerRole(player)
+    if not player or not player.Character then return "Innocent" end
+    local backpack = player:FindFirstChild("Backpack")
+    local character = player.Character
+
+    local hasKnife = (backpack and backpack:FindFirstChild("Knife")) or character:FindFirstChild("Knife")
+    local hasGun = (backpack and backpack:FindFirstChild("Gun")) or character:FindFirstChild("Gun")
+
+    if hasKnife then
+        return "Murderer"
+    elseif hasGun then
+        return "Sheriff"
+    end
+    return "Innocent"
+end
 
 local espObjects = {}
 
@@ -850,19 +798,6 @@ local function ClearESP(player)
     end
 end
 
-local function GetPlayerRole(player)
-    if not player or not player.Character then return "Innocent" end
-    local backpack = player:FindFirstChild("Backpack")
-    local character = player.Character
-
-    local hasKnife = (backpack and backpack:FindFirstChild("Knife")) or character:FindFirstChild("Knife")
-    local hasGun = (backpack and backpack:FindFirstChild("Gun")) or character:FindFirstChild("Gun")
-
-    if hasKnife then return "Murderer"
-    elseif hasGun then return "Sheriff" end
-    return "Innocent"
-end
-
 local function CreateESPForPlayer(player)
     if player == LocalPlayer then return end
     ClearESP(player)
@@ -873,6 +808,7 @@ local function CreateESPForPlayer(player)
 
     local highlight = Instance.new("Highlight")
     highlight.Name = "Highlight"
+    highlight.Adornee = nil
     highlight.FillTransparency = 0.5
     highlight.OutlineTransparency = 0
     highlight.Parent = folder
@@ -893,7 +829,12 @@ local function CreateESPForPlayer(player)
     nameLabel.TextStrokeTransparency = 0.5
     nameLabel.Parent = billboard
 
-    espObjects[player] = { Folder = folder, Highlight = highlight, Billboard = billboard, Label = nameLabel }
+    espObjects[player] = {
+        Folder = folder,
+        Highlight = highlight,
+        Billboard = billboard,
+        Label = nameLabel
+    }
 end
 
 local gunDropHighlight = nil
@@ -901,7 +842,7 @@ local gunDropBillboard = nil
 
 local function UpdateGunDropESP()
     local gunDrop = workspace:FindFirstChild("GunDrop", true)
-    if ESP_Config.Innocent.GunDrop and gunDrop then
+    if ESP_Config.GunDrop and gunDrop then
         if not gunDropHighlight then
             gunDropHighlight = Instance.new("Highlight")
             gunDropHighlight.Name = "GunDropHighlight"
@@ -947,15 +888,31 @@ RunService.RenderStepped:Connect(function()
                 data = espObjects[player]
             end
 
-            if data and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            if data and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 local char = player.Character
                 local hrp = char.HumanoidRootPart
+                local myHrp = LocalPlayer.Character.HumanoidRootPart
                 local role = GetPlayerRole(player)
                 
-                local cfg = role == "Murderer" and ESP_Config.Murd or (role == "Sheriff" and ESP_Config.Sheriff or ESP_Config.Innocent)
-                local color = role == "Murderer" and ESP_Config.MurdererColor or (role == "Sheriff" and ESP_Config.SheriffColor or ESP_Config.InnocentColor)
+                local active = false
+                local showInfo = false
+                local color = Color3.fromRGB(255, 255, 255)
 
-                if cfg.Enabled or cfg.Chams then
+                if role == "Innocent" then
+                    active = ESP_Config.InnocentEnabled
+                    showInfo = ESP_Config.InnocentInfo
+                    color = ESP_Config.InnocentColor
+                elseif role == "Sheriff" then
+                    active = ESP_Config.SheriffEnabled
+                    showInfo = ESP_Config.SheriffInfo
+                    color = ESP_Config.SheriffColor
+                elseif role == "Murderer" then
+                    active = ESP_Config.MurderEnabled
+                    showInfo = ESP_Config.MurderInfo
+                    color = ESP_Config.MurderColor
+                end
+
+                if active then
                     data.Highlight.Adornee = char
                     data.Highlight.FillColor = color
                     data.Highlight.OutlineColor = color
@@ -964,9 +921,10 @@ RunService.RenderStepped:Connect(function()
                     data.Highlight.Enabled = false
                 end
 
-                if cfg.Names then
+                if showInfo then
                     data.Billboard.Adornee = hrp
-                    data.Label.Text = player.DisplayName .. " [" .. role .. "]"
+                    local dist = math.floor((hrp.Position - myHrp.Position).Magnitude)
+                    data.Label.Text = player.DisplayName .. " [" .. dist .. "s]"
                     data.Label.TextColor3 = color
                     data.Billboard.Enabled = true
                 else
@@ -981,3 +939,113 @@ RunService.RenderStepped:Connect(function()
 end)
 
 Players.PlayerRemoving:Connect(ClearESP)
+
+----------------------------------------------------
+-- ИНТЕРФЕЙС ВКЛАДКИ ESP (ПОД 3 ОТСЕКА)
+----------------------------------------------------
+
+-- ОТСЕК 1: INNOCENT
+ESPTab:Section({ Title = "1. Innocent" })
+
+ESPTab:Colorpicker({
+    Title = 'Innocent ESP Color',
+    Default = ESP_Config.InnocentColor,
+    Callback = function(color)
+        ESP_Config.InnocentColor = color
+    end,
+})
+
+ESPTab:Toggle({
+    Title = 'Innocent Esp',
+    Default = false,
+    Callback = function(state)
+        ESP_Config.InnocentEnabled = state
+    end,
+})
+
+ESPTab:Toggle({
+    Title = 'Innocent Name & Info',
+    Default = false,
+    Callback = function(state)
+        ESP_Config.InnocentInfo = state
+    end,
+})
+
+ESPTab:Divider()
+
+-- ОТСЕК 2: SHERIFF
+ESPTab:Section({ Title = "2. Sheriff" })
+
+ESPTab:Colorpicker({
+    Title = 'Sheriff ESP Color',
+    Default = ESP_Config.SheriffColor,
+    Callback = function(color)
+        ESP_Config.SheriffColor = color
+    end,
+})
+
+ESPTab:Toggle({
+    Title = 'Sheriff Esp',
+    Default = false,
+    Callback = function(state)
+        ESP_Config.SheriffEnabled = state
+    end,
+})
+
+ESPTab:Toggle({
+    Title = 'Sheriff Name & Info',
+    Default = false,
+    Callback = function(state)
+        ESP_Config.SheriffInfo = state
+    end,
+})
+
+ESPTab:Divider()
+
+-- ОТСЕК 3: MURDER
+ESPTab:Section({ Title = "3. Murder" })
+
+ESPTab:Colorpicker({
+    Title = 'Murder ESP Color',
+    Default = ESP_Config.MurderColor,
+    Callback = function(color)
+        ESP_Config.MurderColor = color
+    end,
+})
+
+ESPTab:Toggle({
+    Title = 'Murder Esp',
+    Default = false,
+    Callback = function(state)
+        ESP_Config.MurderEnabled = state
+    end,
+})
+
+ESPTab:Toggle({
+    Title = 'Murder Name & Info',
+    Default = false,
+    Callback = function(state)
+        ESP_Config.MurderInfo = state
+    end,
+})
+
+ESPTab:Divider()
+
+-- Дополнительно: Дроп гана
+ESPTab:Section({ Title = "Extras" })
+
+ESPTab:Toggle({
+    Title = 'Show Gun Drop',
+    Default = false,
+    Callback = function(state)
+        ESP_Config.GunDrop = state
+    end,
+})
+
+ESPTab:Colorpicker({
+    Title = 'Gun Drop Color',
+    Default = ESP_Config.GunDropColor,
+    Callback = function(color)
+        ESP_Config.GunDropColor = color
+    end,
+})
